@@ -438,8 +438,8 @@ function sfx(name){
     case 'tele':tone(t,1318,0.06,'square',0.07);tone(t+0.07,1760,0.09,'square',0.07);break;
     case 'tele2':tone(t,988,0.06,'triangle',0.08);tone(t+0.07,1175,0.08,'triangle',0.08);break;
     case 'look':noise(t,0.14,0.35,'bandpass',1100);break;
-    case 'good':tone(t,880,0.08,'triangle',0.22);tone(t+0.06,1175,0.12,'triangle',0.22);break;
-    case 'perfect':[1046.5,1318.5,1568,2093].forEach((f,i)=>tone(t+i*0.045,f,0.16,'sine',0.2));break;
+    case 'good':tone(t,190,0.1,'sine',0.55,sfxBus,70);noise(t,0.03,0.25,'highpass',2500);tone(t,1175,0.07,'triangle',0.1);break;
+    case 'perfect':tone(t,190,0.12,'sine',0.65,sfxBus,65);noise(t,0.035,0.35,'highpass',3000);[1568,2093,2637].forEach(f=>tone(t,f,0.14,'triangle',0.07));break;
     case 'recv':tone(t,1318,0.1,'sine',0.1);tone(t+0.05,1760,0.12,'sine',0.08);break;
     case 'feint':tone(t,330,0.12,'sawtooth',0.05);tone(t+0.1,262,0.18,'sawtooth',0.05);break;
     case 'flinch':tone(t,180,0.22,'square',0.08,sfxBus,120);break;
@@ -458,7 +458,7 @@ function toggleMute(){muted=!muted;if(master)master.gain.value=muted?0:0.6;try{l
 setMuteLabel();
 
 // ================= ゲーム状態 =================
-const LOOK_DUR=0.36, COOL=0.12, PERFECT=0.08, LATE=0.09;
+const LOOK_DUR=0.36, COOL=0.12, PERFECT=0.08, LATE=0.11, VIS_LEAD=0.03; // VIS_LEAD: 画面に出るまでの遅れぶん、リングを先回りして描く
 let state='title', paused=false;
 let startRaw=0,pauseAccum=0,pausedRaw=0,gt=0,vt=0;
 let events=[],nextHitBeat=8,nextMemBeat=0,score=0,dodged=0,perfects=0,received=0,combo=0,maxCombo=0,lastLv=1;
@@ -822,7 +822,10 @@ function songTimeAt(pms){
 }
 function look(t=gt){
   if(t<lookStart+LOOK_DUR+COOL)return;
-  lookStart=t;sfx('look');
+  lookStart=t;
+  let tg=null;for(const e of events){const d=e.hit-t;if(!e.done&&e.mem===0&&!e.feint&&d>=-LATE&&d<=LOOK_DUR&&(!tg||e.hit<tg.hit))tg=e}
+  if(tg){tg.done=true;tg.okT=gt;success(tg,Math.abs(tg.hit-t)<=PERFECT);return}
+  sfx('look');
   popup('スッ…',FACE.x+70,FACE.y-70,'#cfe3ff',18,0.5);
   const realSoon=events.some(e=>!e.done&&e.mem===0&&!e.feint&&e.hit>=t-LATE&&e.hit<=t+LOOK_DUR+0.25);
   if(realSoon)return;
@@ -897,7 +900,7 @@ function updatePlay(){
         if(!e.flinched){score+=50*(voltMax()?2:1);addVolt(3);popup('見切った',FACE.x-120,FACE.y-30,'#d9c8ff',22,0.8)}
       }else{
         const d=e.hit-lookStart;
-        if(d>=-LATE&&d<=LOOK_DUR)success(e,Math.abs(d)<=PERFECT);
+        if(d>=-LATE&&d<=LOOK_DUR){e.okT=gt;success(e,Math.abs(d)<=PERFECT)}
         else{fail(e);return}
       }
     }
@@ -1464,6 +1467,9 @@ function telegraphLevel(){
 const ringCol=e=>MEMBERS[e.mem].col;
 function drawRings(){
   if(state!=='play')return;
+  const gt0=gt;gt+=VIS_LEAD;try{drawRings0()}finally{gt=gt0}
+}
+function drawRings0(){
   const active=events.some(e=>!e.done&&gt>=e.start&&!(e.feint&&e.revealed));
   const bph=curSeg?(((gt-curSeg.t0-curSeg.off)/BEAT)%1+1)%1:0,pulse=Math.max(0,1-bph*3);
   if(active){
@@ -1483,7 +1489,7 @@ function drawRings(){
     }
     if(e.done){
       const d=gt-e.hit;
-      if(e.res==='ok'){const a=1-d/0.3;if(a>0){ctx.strokeStyle=`rgba(255,255,255,${a})`;ctx.lineWidth=4;ell(gx,gy,TARGET_R+d*220,TARGET_R+d*220);ctx.stroke()}}
+      if(e.res==='ok'){const d=gt-(e.okT!=null?e.okT+VIS_LEAD:e.hit),a=1-d/0.3;if(a>0){ctx.strokeStyle=`rgba(255,255,255,${a})`;ctx.lineWidth=4;ell(gx,gy,TARGET_R+d*220,TARGET_R+d*220);ctx.stroke()}}
       else if(e.res==='recv'){const a=1-d/0.35;if(a>0){ctx.save();ctx.globalAlpha=a*0.45;ctx.fillStyle=col;ell(gx,gy,TARGET_R*(1-d),TARGET_R*(1-d));ctx.fill();ctx.restore()}}
       continue;
     }
