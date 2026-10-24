@@ -1092,28 +1092,22 @@ function drawBG(bt){
   txt('EXIT',ex+32,ey+13,14,'#eafff0');
 }
 
-// スマホ縦：ライブハウスの後方の壁。古いチラシの上に新しいチラシが重ね貼りされ、ステッカーや落書きもある（人物は避けない）
+// スマホ縦：ライブハウスの後方の壁。チラシはばらばらに貼られ、ステッカーや落書きもある（人物は避けない）
 let wallCache=null;
 function wallItems(wx,wy,ww,wh){
   const key=L.key;if(wallCache&&wallCache.key===key)return wallCache.items;
   const r=seeded(4242),items=[],kinds=['oshi','live','goods','taiban','plain'],cols=['#ff6fae','#5fd0ff','#ffe15f','#b98aff','#ff9a5f','#7be0b0','#f3ecf8'];
   const pk=a=>a[Math.floor(r()*a.length)];
-  // 下地：色あせた古いチラシを、すき間なくなんとなく並べて貼った跡
-  for(let y=wy-10;y<wy+wh;y+=58+r()*16)for(let x=-20+r()*20;x<ww+10;x+=48+r()*22){
-    if(r()<0.18)continue;
-    const w=40+r()*30,h=w*(1.25+r()*0.3);
-    items.push({t:'flyer',x:x+r()*10,y:y+r()*10,w,h,c:pk(cols),rot:(r()-0.5)*0.22,kind:pk(kinds),old:true,tape:r()<0.5?'top':'corner'});
-  }
-  // 上から貼られた新しめのチラシ（大小ばらばら、重なり・はみ出しあり）
-  for(let i=0;i<13;i++){
-    const w=46+r()*34,h=w*(1.3+r()*0.25);
-    items.push({t:'flyer',x:-12+r()*(ww-30),y:wy+r()*(wh-50),w,h,c:pk(cols),rot:(r()-0.5)*0.34,kind:pk(kinds),tape:pk(['top','corner','corner','staple'])});
-  }
+  // もとの4枚（貼り方だけばらつかせる）に、主人公の後ろや端にかかる形で数枚を足す
+  L.posters.forEach((q,i)=>items.push({t:'flyer',x:q[0],y:q[1],w:q[2],h:q[3],c:q[4],rot:q[5],kind:q[6],tape:['top','corner','staple','top'][i]}));
+  for(const [fx,fy,w,rot,kind,c,tape] of [[150,0.04,50,0.09,'plain','#ff9a5f','corner'],[318,0.07,56,-0.07,'live','#7be0b0','top'],[78,0.42,46,0.13,'taiban','#5fd0ff','staple'],
+    [392,0.5,52,-0.1,'plain','#b98aff','corner'],[118,0.74,58,-0.04,'live','#ff6fae','top'],[508,0.16,44,0.16,'goods','#ffe15f','corner']])
+    items.push({t:'flyer',x:fx,y:wy+fy*wh,w,h:w*1.35,c,rot,kind,tape});
   // ステッカー
-  for(let i=0;i<20;i++)items.push({t:'sticker',x:r()*ww,y:wy+r()*wh,s:5+r()*9,c:pk(cols),shape:pk(['circle','circle','rect','star','heart']),rot:(r()-0.5)*0.8});
+  for(let i=0;i<9;i++)items.push({t:'sticker',x:r()*ww,y:wy+r()*wh,s:5+r()*9,c:pk(cols),shape:pk(['circle','circle','rect','star','heart']),rot:(r()-0.5)*0.8});
   // ガムテープの切れ端と、ペンの落書き
-  for(let i=0;i<6;i++)items.push({t:'tape',x:r()*ww,y:wy+r()*wh,w:22+r()*26,rot:(r()-0.5)*1.4});
-  for(let i=0;i<7;i++)items.push({t:'scrib',x:20+r()*(ww-60),y:wy+20+r()*(wh-60),w:24+r()*40,seed:Math.floor(r()*1e6),c:pk(['255,255,255','255,140,200','140,200,255'])});
+  for(let i=0;i<3;i++)items.push({t:'tape',x:r()*ww,y:wy+r()*wh,w:22+r()*26,rot:(r()-0.5)*1.4});
+  for(let i=0;i<3;i++)items.push({t:'scrib',x:20+r()*(ww-60),y:wy+20+r()*(wh-60),w:24+r()*40,seed:Math.floor(r()*1e6),c:pk(['255,255,255','255,140,200','140,200,255'])});
   wallCache={key,items};return items;
 }
 function drawWallClutter(wx,wy,ww,wh){
@@ -1139,7 +1133,7 @@ function drawWallClutter(wx,wy,ww,wh){
     }
   }
   // 壁全体を少し沈めて、背景として目立ちすぎないように（下ほど暗い）
-  const g=ctx.createLinearGradient(0,wy,0,wy+wh);g.addColorStop(0,'rgba(13,9,19,.4)');g.addColorStop(1,'rgba(13,9,19,.62)');
+  const g=ctx.createLinearGradient(0,wy,0,wy+wh);g.addColorStop(0,'rgba(13,9,19,.12)');g.addColorStop(1,'rgba(13,9,19,.35)');
   ctx.fillStyle=g;ctx.fillRect(wx,wy,ww,wh);
   ctx.restore();
 }
