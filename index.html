@@ -78,6 +78,16 @@ body{
 #tipBtn{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 #chekiModal{position:absolute;inset:0;background:rgba(10,6,16,.8);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.5%;padding:2%;box-sizing:border-box;overflow:hidden}
 #chekiModal[hidden]{display:none}
+#tuneModal{position:absolute;inset:0;background:rgba(10,6,16,.95);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:5%;box-sizing:border-box;overflow:hidden;text-align:center}
+#tuneModal h3{margin:0;font:800 22px/1.2 var(--f-body);color:var(--gold)}
+#tuneModal p{margin:0;max-width:30em;font:500 14px/1.6 var(--f-body);color:var(--fg)}
+#tuneModal .sub{font-size:12px;color:var(--muted)}
+#tuneTap{width:min(56vw,220px);aspect-ratio:1;border-radius:50%;border:4px solid var(--accent);background:radial-gradient(circle,#3a1530,#1a1224);color:var(--fg);font:800 18px/1.3 var(--f-body);cursor:pointer;touch-action:manipulation;transition:transform .06s}
+#tuneTap.beat{transform:scale(1.06);border-color:#fff}
+#tuneDots{display:flex;gap:8px}#tuneDots i{width:12px;height:12px;border-radius:50%;background:var(--line)}#tuneDots i.on{background:var(--accent)}
+#tuneModal .tuneRow{display:flex;align-items:center;gap:12px}
+#tuneModal button:not(#tuneTap){font:800 14px/1 var(--f-body);border-radius:999px;padding:10px 16px;background:var(--panel);color:var(--fg);border:1.5px solid var(--line);cursor:pointer}
+#tuneVal{min-width:5.5em;font:800 20px/1 var(--f-body);color:var(--gold)}
 #bookModal{position:absolute;inset:0;background:rgba(10,6,16,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2%;padding:3%;box-sizing:border-box;overflow:hidden}
 #bookModal h3{margin:0;font:800 clamp(18px,2.6vw,26px)/1.2 var(--f-body);color:var(--gold)}
 #bookGrid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:2%;width:94%;max-width:640px}
@@ -144,6 +154,15 @@ button:focus-visible{outline:3px solid var(--fg);outline-offset:3px}
       <p id="bookHint"></p>
       <button id="bookClose" type="button">閉じる</button>
       <div id="bookView" hidden><img id="bookImg" alt=""><button id="bookViewClose" type="button">もどる</button></div>
+    </div>
+    <div id="tuneModal" hidden>
+      <h3>タイミング調整</h3>
+      <p id="tuneMsg">まんなかの丸を押すと「カッ、カッ」とリズムが鳴るよ。音に合わせて8回タップしてね。</p>
+      <button id="tuneTap" type="button">ここを押して<br>スタート</button>
+      <div id="tuneDots"></div>
+      <div class="tuneRow"><button id="tuneMinus" type="button">− 10</button><span id="tuneVal">±0 ms</span><button id="tunePlus" type="button">＋ 10</button></div>
+      <p class="sub">押すのが音より遅れがちなら＋、早めなら−。Bluetoothイヤホンは＋100〜200msくらいが目安。</p>
+      <div class="tuneRow"><button id="tuneReset" type="button">リセット</button><button id="tuneClose" type="button">閉じる</button></div>
     </div>
     <div id="cardModal" hidden>
       <h3>結果カード</h3>
@@ -699,6 +718,63 @@ $('bookClose').addEventListener('click',()=>{$('bookModal').hidden=true});
 $('bookViewClose').addEventListener('click',()=>{$('bookView').hidden=true});
 $('bookView').addEventListener('click',e=>{if(e.target.id==='bookView')$('bookView').hidden=true});
 // タイトル画面のいちばん下（左寄せ。右下はミュートボタン）
+// ---- タイミング調整（押すタイミングのクセやイヤホンの遅れを補正。プラス＝遅れて押しがち） ----
+let tuneOff=0;try{tuneOff=clamp(Math.round(+localStorage.getItem('kohoKareshi.offset')||0),-150,300)}catch(e){}
+const TUNE_BEAT=0.5,TUNE_N=8;
+let tuneRun=null,tuneTimer=0;
+function tuneLabel(v){return v===0?'±0 ms':(v>0?'+':'−')+Math.abs(v)+' ms'}
+function setTune(v){tuneOff=clamp(Math.round(v),-150,300);$('tuneVal').textContent=tuneLabel(tuneOff);try{localStorage.setItem('kohoKareshi.offset',String(tuneOff))}catch(e){}}
+function tuneRect(){const P=L.portrait,b=titleButtons()[0],w=P?240:210,h=P?34:28;return{x:(P?270:330)-w/2,y:b.y+b.h+(P?40:46),w,h}}
+function drawTuneBtn(){
+  const r=tuneRect();
+  ctx.fillStyle='rgba(26,18,36,.9)';rrPath(r.x,r.y,r.w,r.h,r.h/2);ctx.fill();ctx.strokeStyle='#5a4670';ctx.lineWidth=1.5;ctx.stroke();
+  txt('タイミング調整 '+tuneLabel(tuneOff),r.x+r.w/2,r.y+r.h/2+0.5,L.portrait?14:12,'#cfc3dc');
+}
+function tuneDots(n){$('tuneDots').innerHTML=Array.from({length:TUNE_N},(_,i)=>i<n?'<i class="on"></i>':'<i></i>').join('')}
+function openTune(){stopTune();$('tuneVal').textContent=tuneLabel(tuneOff);tuneDots(0);$('tuneTap').innerHTML='ここを押して<br>スタート';$('tuneModal').hidden=false}
+function closeTune(){stopTune();$('tuneModal').hidden=true}
+function stopTune(){tuneRun=null;clearInterval(tuneTimer);$('tuneTap').classList.remove('beat')}
+// 押した瞬間に、いま耳に届いている音の時刻（オーディオの時計で）
+function tuneCtxTime(pms){
+  if(ac.getOutputTimestamp){const ts=ac.getOutputTimestamp();if(ts&&ts.performanceTime>0)return ts.contextTime+(pms-ts.performanceTime)/1000}
+  const lat=clamp((ac.outputLatency||0)+(ac.baseLatency||0),0,0.25);
+  return ac.currentTime-lat-(performance.now()-pms)/1000;
+}
+async function startTune(){
+  initAudio();try{if(ac&&ac.state!=='running')await ac.resume()}catch(e){}
+  if(!ac||ac.state!=='running'){$('tuneMsg').textContent='音が鳴らせませんでした。もう一度押してね。';return}
+  const run={t0:ac.currentTime+0.4,next:0,taps:[]};tuneRun=run;tuneDots(0);
+  $('tuneTap').textContent='よく聞いて…';$('tuneMsg').textContent='4回聞いたら、音に合わせてタップ！';
+  clearInterval(tuneTimer);
+  tuneTimer=setInterval(()=>{
+    if(tuneRun!==run)return;
+    while(tuneRun===run&&run.t0+run.next*TUNE_BEAT<ac.currentTime+0.15){
+      const at=run.t0+run.next*TUNE_BEAT,acc=run.next%4===0,k=run.next;
+      tone(at,acc?1760:1320,0.05,'square',acc?0.12:0.08);noise(at,0.02,0.2,'highpass',3000);
+      setTimeout(()=>{if(tuneRun!==run)return;const b=$('tuneTap');b.classList.add('beat');setTimeout(()=>b.classList.remove('beat'),90);if(k===4)b.textContent='タップ！'},Math.max(0,(at-tuneCtxTime(performance.now()))*1000)); // 光るのは音が耳に届く瞬間
+      run.next++;
+      if(run.next>40){stopTune();$('tuneTap').innerHTML='もう一回<br>はかる';$('tuneMsg').textContent='時間切れ。もう一回やってみてね。'}
+    }
+  },40);
+}
+function tuneTap(pms){
+  if(!tuneRun){startTune();return}
+  const run=tuneRun,t=tuneCtxTime(pms!=null?pms:performance.now());
+  const k=Math.round((t-run.t0)/TUNE_BEAT),d=t-(run.t0+k*TUNE_BEAT);
+  if(k<4||Math.abs(d)>0.24)return;
+  run.taps.push(d);tuneDots(run.taps.length);
+  if(run.taps.length>=TUNE_N){
+    const a=run.taps.slice().sort((x,y)=>x-y),med=(a[3]+a[4])/2;
+    setTune(Math.round(med*1000/5)*5);stopTune();
+    $('tuneTap').innerHTML='もう一回<br>はかる';
+    $('tuneMsg').textContent='計測結果 '+tuneLabel(tuneOff)+'：'+(tuneOff>=15?'音より少し遅れて押すクセがあるみたい。そのぶん補正するね。':tuneOff<=-15?'音より少し早めに押すクセがあるみたい。そのぶん補正するね。':'ばっちり！ほぼ音どおりに押せてるよ。');
+  }
+}
+$('tuneTap').addEventListener('pointerdown',e=>{e.preventDefault();tuneTap(e.timeStamp)});
+$('tuneMinus').addEventListener('click',()=>setTune(tuneOff-10));
+$('tunePlus').addEventListener('click',()=>setTune(tuneOff+10));
+$('tuneReset').addEventListener('click',()=>{setTune(0);$('tuneMsg').textContent='補正をなしに戻したよ。'});
+$('tuneClose').addEventListener('click',closeTune);
 function bookRect(){const P=L.portrait,w=P?392:340,h=P?50:32;return{x:16,y:H-h-(P?16:10),w,h}}
 function drawBook(){
   const P=L.portrait,{x,y,w,h}=bookRect(),n=memberCount(),d=decoCount();
@@ -891,7 +967,7 @@ function updatePlay(){
     if(e.done)continue;
     if(!e.played&&gt>=e.start){e.played=true;if(e.mem>0)sfx('tele2')}
     if(e.feint&&!e.revealed&&gt>=e.revealT){e.revealed=true;sfx('feint')}
-    if(gt>=e.hit+(e.mem===0&&!e.feint?LATE:0)){
+    if(gt>=e.hit+(e.mem===0&&!e.feint?LATE+Math.max(0,tuneOff/1000):0)){ // 遅め補正のぶん、押されるのを待つ
       e.done=true;
       if(e.mem>0){receive(e);continue}
       if(e.feint){
@@ -934,12 +1010,13 @@ function resumeGame(){if(!paused)return;pauseAccum+=rawNow()-pausedRaw;paused=fa
 document.addEventListener('visibilitychange',()=>{if(document.hidden)pauseGame()});
 
 function press(ts){
+  if(!$('tuneModal').hidden){tuneTap(ts);return}
   if(!$('bookModal').hidden){$('bookModal').hidden=true;return}
   if(!$('chekiModal').hidden){closeCheki();return}
   if(!$('cardModal').hidden){$('cardModal').hidden=true;return}
   if(state==='title'){startGame('normal');return}
   if(state==='result'){if(vt-resultVt>0.8)startGame(mode);return}
-  if(state==='play'){if(paused){resumeGame();return}look(ts!=null&&ac&&(!songMode||ac.state==='running')?Math.min(gt+0.05,Math.max(gt-0.1,songTimeAt(ts))):gt)}
+  if(state==='play'){if(paused){resumeGame();return}look((ts!=null&&ac&&(!songMode||ac.state==='running')?clamp(songTimeAt(ts),gt-0.1,gt+0.05):gt)-tuneOff/1000)}
 }
 function toTitle(){hideResultUI();state='title';joined=[true,false,false,false,false];events=[]}
 const hitRect=(p,b)=>p.x>=b.x&&p.x<=b.x+b.w&&p.y>=b.y&&p.y<=b.y+b.h;
@@ -957,6 +1034,7 @@ cv.addEventListener('pointerdown',e=>{
     const p=canvasPoint(e),c=selectorCards().find(c=>p.x>=c.x-6&&p.x<=c.x+c.w+6&&p.y>=c.y-10&&p.y<=c.y+c.h+22);
     if(c){setOshi(c.i);return}
     if(hitRect(p,bookRect())){openBook();return}
+    if(hitRect(p,tuneRect())){openTune();return}
     const b=titleButtons().find(b=>hitRect(p,b));
     if(b)startGame(b.id);
     return;
@@ -1658,6 +1736,7 @@ function drawTitle(){
   const btns=titleButtons();drawButtons(btns);
   const by2=btns[0].y+btns[0].h;
   drawBook();
+  drawTuneBtn();
   if(bests.normal||bests.challenge)txt(`ベスト　ノーマル ${bests.normal.toLocaleString()}　チャレンジ ${bests.challenge.toLocaleString()}`,cx,by2+(P?22:30),12,'#a698b5');
 }
 // 推し選択カード（タイトル画面）
