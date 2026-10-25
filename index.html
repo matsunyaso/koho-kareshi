@@ -109,7 +109,7 @@ body{
 #cardModal h3{margin:0;font:800 clamp(14px,2vw,20px)/1.2 var(--f-body);color:var(--gold)}
 #cardImg{flex:0 1 auto;min-height:0;max-height:72%;max-width:86%;object-fit:contain;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.6)}
 #cardModal p{margin:0;font:800 clamp(11px,1.4vw,14px)/1.4 var(--f-body);color:var(--fg);text-align:center}
-#cardBtn,#copyCard{background:var(--gold);color:#2a1a06;border-color:var(--gold)}
+#cardBtn,#copyCard,#shareCard{background:var(--gold);color:#2a1a06;border-color:var(--gold)}
 #stage.portrait #cardModal p{font-size:clamp(12px,3.4vw,15px)}
 #chekiModal h3{margin:0;font:800 clamp(15px,2.2vw,24px)/1.2 var(--f-body);color:var(--gold);text-shadow:0 2px 0 #000;text-align:center}
 #chekiImg{flex:0 1 auto;min-height:0;max-height:64%;max-width:80%;object-fit:contain;height:auto;width:auto;transform:rotate(-3deg);box-shadow:0 12px 30px rgba(0,0,0,.6);animation:chekiIn .6s cubic-bezier(.2,1.4,.4,1) both}
@@ -167,8 +167,8 @@ button:focus-visible{outline:3px solid var(--fg);outline-offset:3px}
     <div id="cardModal" hidden>
       <h3>結果カード</h3>
       <img id="cardImg" alt="結果カード">
-      <p>「画像をコピー」してXのポストに貼り付けるか、長押しで保存して添付してね</p>
-      <div class="resRow"><button id="copyCard" type="button">画像をコピー</button><a id="shareX2" href="#" target="_blank" rel="noopener">Xでシェア</a><button id="cardClose" type="button">閉じる</button></div>
+      <p id="cardHint">「画像をコピー」してXのポストに貼り付けるか、長押しで保存して添付してね</p>
+      <div class="resRow"><button id="shareCard" type="button" hidden>画像つきで投稿</button><button id="copyCard" type="button">画像をコピー</button><a id="shareX2" href="#" target="_blank" rel="noopener">Xでシェア</a><button id="cardClose" type="button">閉じる</button></div>
     </div>
     <div id="chekiModal" hidden>
       <h3 id="chekiTitle"></h3>
@@ -689,6 +689,8 @@ function makeResultCard(){
 function openCard(){
   if(!cardURL)cardURL=makeResultCard();
   $('cardImg').src=cardURL;$('cardModal').hidden=false;$('copyCard').textContent='画像をコピー';
+  const sh=cardShareData();$('shareCard').hidden=!sh;$('copyCard').hidden=!!sh;
+  $('cardHint').textContent=sh?'「画像つきで投稿」を押して、出てきたメニューからXを選んでね（画像は長押しで保存もできるよ）':'「画像をコピー」してXのポストに貼り付けるか、長押しで保存して添付してね';
 }
 // ---- チェキ帳（タイトルから開く） ----
 const memberCount=()=>BASE_MEMBERS.filter(m=>(chekiGot[m.name]||0)>=1).length;
@@ -822,17 +824,14 @@ function cardFile(){
   const b=atob(cardURL.split(',')[1]),a=new Uint8Array(b.length);for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);
   return new File([a],'koho-kareshi.jpg',{type:'image/jpeg'});
 }
-function shareWithCard(e){
-  if(!ON_SITE||!navigator.share||!navigator.canShare||!matchMedia('(pointer:coarse)').matches)return; // PCはXの投稿画面をそのまま開く
-  let f;try{f=cardFile()}catch(err){return}
+// スマホでは共有メニューに結果カードを添付して渡す（「Xでシェア」ボタンはXの投稿画面を直接開く）
+function cardShareData(){
+  if(!ON_SITE||!navigator.share||!navigator.canShare||!matchMedia('(pointer:coarse)').matches)return null;
+  let f;try{f=cardFile()}catch(err){return null}
   const data={files:[f],text:resultText(lastReward||rewardInfo())+' '+GAME_URL};
-  if(!navigator.canShare(data))return;
-  e.preventDefault();
-  const href=e.currentTarget.href;
-  navigator.share(data).catch(err=>{if(err&&err.name!=='AbortError')window.open(href,'_blank','noopener')});
+  return navigator.canShare(data)?data:null;
 }
-$('shareX').addEventListener('click',shareWithCard);
-$('shareX2').addEventListener('click',shareWithCard);
+$('shareCard').addEventListener('click',()=>{const d=cardShareData();if(d)navigator.share(d).catch(()=>{})});
 $('copyRes').addEventListener('click',()=>{
   const t=resultText(lastReward||rewardInfo())+' '+GAME_URL;
   try{navigator.clipboard.writeText(t).then(()=>{$('copyRes').textContent='コピーしました'},()=>{$('copyRes').textContent='コピーできませんでした'})}catch(e){$('copyRes').textContent='コピーできませんでした'}
